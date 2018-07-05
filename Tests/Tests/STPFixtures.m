@@ -8,8 +8,38 @@
 
 #import "STPFixtures.h"
 #import "STPTestUtils.h"
+#import "STPEphemeralKey.h"
+
+NSString *const STPTestJSONCustomer = @"Customer";
+
+NSString *const STPTestJSONCard = @"Card";
+
+NSString *const STPTestJSONSourceAlipay = @"AlipaySource";
+NSString *const STPTestJSONSourceCard = @"CardSource";
+NSString *const STPTestJSONSource3DS = @"3DSSource";
+NSString *const STPTestJSONSourceiDEAL = @"iDEALSource";
+NSString *const STPTestJSONSourceSEPADebit = @"SEPADebitSource";
 
 @implementation STPFixtures
+
++ (STPConnectAccountParams *)accountParams {
+    return [[STPConnectAccountParams alloc] initWithTosShownAndAccepted:YES
+                                                            legalEntity:[self legalEntityParams]];
+}
+
++ (STPAddress *)address {
+    STPAddress *address = [STPAddress new];
+    address.name = @"Jenny Rosen";
+    address.phone = @"5555555555";
+    address.email = @"jrosen@example.com";
+    address.line1 = @"27 Smith St";
+    address.line2 = @"Apt 2";
+    address.postalCode = @"10001";
+    address.city = @"New York";
+    address.state = @"NY";
+    address.country = @"US";
+    return address;
+}
 
 + (STPBankAccountParams *)bankAccountParams {
     STPBankAccountParams *bankParams = [STPBankAccountParams new];
@@ -31,26 +61,131 @@
     return cardParams;
 }
 
++ (STPCard *)card {
+    return [STPCard decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:STPTestJSONCard]];
+}
+
 + (STPSource *)cardSource {
-    return [STPSource decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:@"CardSource"]];
+    return [STPSource decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:STPTestJSONSourceCard]];
+}
+
++ (STPToken *)cardToken {
+    NSDictionary *cardDict = [STPTestUtils jsonNamed:STPTestJSONCard];
+    NSDictionary *tokenDict = @{
+                                @"id": @"id_for_token",
+                                @"object": @"token",
+                                @"livemode": @NO,
+                                @"created": @1353025450.0,
+                                @"used": @NO,
+                                @"card": cardDict
+                                };
+    return [STPToken decodedObjectFromAPIResponse:tokenDict];
+}
+
++ (STPCustomer *)customerWithNoSources {
+    return [STPCustomer decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:STPTestJSONCustomer]];
 }
 
 + (STPCustomer *)customerWithSingleCardTokenSource {
-    NSMutableDictionary *card1 = [[STPTestUtils jsonNamed:@"Card"] mutableCopy];
+    NSMutableDictionary *card1 = [[STPTestUtils jsonNamed:STPTestJSONCard] mutableCopy];
     card1[@"id"] = @"card_123";
 
-    NSMutableDictionary *customer = [[STPTestUtils jsonNamed:@"Customer"] mutableCopy];
+    NSMutableDictionary *customer = [[STPTestUtils jsonNamed:STPTestJSONCustomer] mutableCopy];
     NSMutableDictionary *sources = [customer[@"sources"] mutableCopy];
     sources[@"data"] = @[card1];
     customer[@"default_source"] = card1[@"id"];
     customer[@"sources"] = sources;
 
-    STPCustomerDeserializer *deserializer = [[STPCustomerDeserializer alloc] initWithJSONResponse:customer];
-    return deserializer.customer;
+    return [STPCustomer decodedObjectFromAPIResponse:customer];
+}
+
++ (STPCustomer *)customerWithSingleCardSourceSource {
+    NSMutableDictionary *card1 = [[STPTestUtils jsonNamed:STPTestJSONSourceCard] mutableCopy];
+    card1[@"id"] = @"card_123";
+
+    NSMutableDictionary *customer = [[STPTestUtils jsonNamed:STPTestJSONCustomer] mutableCopy];
+    NSMutableDictionary *sources = [customer[@"sources"] mutableCopy];
+    sources[@"data"] = @[card1];
+    customer[@"default_source"] = card1[@"id"];
+    customer[@"sources"] = sources;
+
+    return [STPCustomer decodedObjectFromAPIResponse:customer];
+}
+
++ (STPCustomer *)customerWithCardTokenAndSourceSources {
+    NSMutableDictionary *card1 = [[STPTestUtils jsonNamed:STPTestJSONCard] mutableCopy];
+    card1[@"id"] = @"card_123";
+
+    NSMutableDictionary *card2 = [[STPTestUtils jsonNamed:STPTestJSONSourceCard] mutableCopy];
+    card2[@"id"] = @"src_456";
+
+    NSMutableDictionary *customer = [[STPTestUtils jsonNamed:STPTestJSONCustomer] mutableCopy];
+    NSMutableDictionary *sources = [customer[@"sources"] mutableCopy];
+    sources[@"data"] = @[card1, card2];
+    customer[@"default_source"] = card1[@"id"];
+    customer[@"sources"] = sources;
+
+    return [STPCustomer decodedObjectFromAPIResponse:customer];
+
+}
+
++ (STPCustomer *)customerWithCardAndApplePaySources {
+    NSMutableDictionary *card1 = [[STPTestUtils jsonNamed:STPTestJSONSourceCard] mutableCopy];
+    card1[@"id"] = @"src_apple_pay_123";
+    NSMutableDictionary *cardDict = [card1[@"card"] mutableCopy];
+    cardDict[@"tokenization_method"] = @"apple_pay";
+    card1[@"card"] = cardDict;
+
+    NSMutableDictionary *card2 = [[STPTestUtils jsonNamed:STPTestJSONSourceCard] mutableCopy];
+    card2[@"id"] = @"src_card_456";
+
+    NSMutableDictionary *customer = [[STPTestUtils jsonNamed:STPTestJSONCustomer] mutableCopy];
+    NSMutableDictionary *sources = [customer[@"sources"] mutableCopy];
+    sources[@"data"] = @[card1, card2];
+    customer[@"default_source"] = card1[@"id"];
+    customer[@"sources"] = sources;
+
+    return [STPCustomer decodedObjectFromAPIResponse:customer];
+}
+
++ (STPCustomer *)customerWithSourcesFromJSONKeys:(NSArray<NSString *> *)jsonSourceKeys
+                                   defaultSource:(NSString *)jsonKeyForDefaultSource {
+    NSMutableArray *sourceJSONDicts = [NSMutableArray new];
+    NSString *defaultSourceID = nil;
+    NSUInteger sourceCount = 0;
+    for (NSString *jsonKey in jsonSourceKeys) {
+        NSMutableDictionary *sourceDict = [[STPTestUtils jsonNamed:jsonKey] mutableCopy];
+        sourceDict[@"id"] = [NSString stringWithFormat:@"%@", @(sourceCount)];
+        if ([jsonKeyForDefaultSource isEqualToString:jsonKey]) {
+            defaultSourceID = sourceDict[@"id"];
+        }
+        sourceCount += 1;
+        [sourceJSONDicts addObject:sourceDict.copy];
+    }
+
+    NSMutableDictionary *customer = [[STPTestUtils jsonNamed:STPTestJSONCustomer] mutableCopy];
+    NSMutableDictionary *sources = [customer[@"sources"] mutableCopy];
+    sources[@"data"] = sourceJSONDicts.copy;
+    customer[@"default_source"] = defaultSourceID ?: @"";
+    customer[@"sources"] = sources;
+
+    return [STPCustomer decodedObjectFromAPIResponse:customer];
 }
 
 + (STPSource *)iDEALSource {
-    return [STPSource decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:@"iDEALSource"]];
+    return [STPSource decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:STPTestJSONSourceiDEAL]];
+}
+
++ (STPSource *)alipaySource {
+    return [STPSource decodedObjectFromAPIResponse:[STPTestUtils jsonNamed:STPTestJSONSourceAlipay]];
+}
+
++ (STPSource *)alipaySourceWithNativeUrl {
+    NSMutableDictionary *dictionary = [STPTestUtils jsonNamed:STPTestJSONSourceAlipay].mutableCopy;
+    NSMutableDictionary *detailsDictionary = ((NSDictionary *)dictionary[@"alipay"]).mutableCopy;
+    detailsDictionary[@"native_url"] = @"alipay://test";
+    dictionary[@"alipay"] = detailsDictionary;
+    return [STPSource decodedObjectFromAPIResponse:dictionary];
 }
 
 + (STPPaymentConfiguration *)paymentConfiguration {
@@ -59,20 +194,18 @@
     return config;
 }
 
-+ (id<STPBackendAPIAdapter>)staticAPIAdapter {
-    return [self staticAPIAdapterWithCustomer:[self customerWithSingleCardTokenSource]];
++ (STPEphemeralKey *)ephemeralKey {
+    NSMutableDictionary *response = [[STPTestUtils jsonNamed:@"EphemeralKey"] mutableCopy];
+    NSTimeInterval interval = 100;
+    response[@"expires"] = @([[NSDate dateWithTimeIntervalSinceNow:interval] timeIntervalSince1970]);
+    return [STPEphemeralKey decodedObjectFromAPIResponse:response];
 }
 
-+ (id<STPBackendAPIAdapter>)staticAPIAdapterWithCustomer:(STPCustomer *)customer {
-    id mockAPIAdapter = OCMProtocolMock(@protocol(STPBackendAPIAdapter));
-    OCMStub([mockAPIAdapter retrieveCustomer:[OCMArg any]]).andDo(^(NSInvocation *invocation){
-        STPCustomerCompletionBlock completion;
-        [invocation getArgument:&completion atIndex:2];
-        completion(customer, nil);
-    });
-    OCMStub([mockAPIAdapter selectDefaultCustomerSource:[OCMArg any] completion:[OCMArg invokeBlock]]);
-    OCMStub([mockAPIAdapter attachSourceToCustomer:[OCMArg any] completion:[OCMArg invokeBlock]]);
-    return mockAPIAdapter;
++ (STPEphemeralKey *)expiringEphemeralKey {
+    NSMutableDictionary *response = [[STPTestUtils jsonNamed:@"EphemeralKey"] mutableCopy];
+    NSTimeInterval interval = 10;
+    response[@"expires"] = @([[NSDate dateWithTimeIntervalSinceNow:interval] timeIntervalSince1970]);
+    return [STPEphemeralKey decodedObjectFromAPIResponse:response];
 }
 
 + (PKPayment *)applePayPayment {
@@ -117,6 +250,61 @@
     [payment performSelector:@selector(setToken:) withObject:paymentToken];
 #pragma clang diagnostic pop
     return payment;
+}
+
++ (STPLegalEntityParams *)legalEntityParams {
+    STPLegalEntityParams *legalEntity = [STPLegalEntityParams new];
+
+    legalEntity.firstName = @"Jessica";
+    legalEntity.lastName = @"Jones";
+    legalEntity.maidenName = @"Smith";
+    legalEntity.address = [self address];
+
+    legalEntity.dateOfBirth = [NSDateComponents new];
+    legalEntity.dateOfBirth.year = 1980;
+    legalEntity.dateOfBirth.month = 7;
+    legalEntity.dateOfBirth.day = 4;
+
+    legalEntity.verification = [STPVerificationParams new];
+    legalEntity.verification.document = @"file_abc";
+
+    STPPersonParams *jenny = [self personParams], *jacob = [self personParams];
+    jenny.firstName = @"Jenny";
+    jacob.firstName = @"Jacob";
+    legalEntity.additionalOwners = @[jenny, jacob];
+
+    legalEntity.businessName = @"Internet Business";
+    legalEntity.businessTaxId = @"123";
+    legalEntity.businessVATId = @"456";
+    legalEntity.genderString = @"female";
+    legalEntity.personalAddress = [self address];
+    legalEntity.personalAddress.state = @"CA";
+    legalEntity.personalIdNumber = @"000000000";
+    legalEntity.phoneNumber = @"555-1234";
+    legalEntity.ssnLast4 = @"0000";
+    legalEntity.taxIdRegistrar = @"321";
+    legalEntity.entityTypeString = @"individual";
+
+    return legalEntity;
+}
+
++ (STPPersonParams *)personParams {
+    STPPersonParams *person = [STPPersonParams new];
+
+    person.firstName = @"James";
+    person.lastName = @"Smith";
+    person.maidenName = @"Jones";
+    person.address = [self address];
+
+    person.dateOfBirth = [NSDateComponents new];
+    person.dateOfBirth.year = 1980;
+    person.dateOfBirth.month = 7;
+    person.dateOfBirth.day = 4;
+
+    person.verification = [STPVerificationParams new];
+    person.verification.document = @"file_abc";
+
+    return person;
 }
 
 @end

@@ -9,9 +9,16 @@
 #import "STPSourceParams.h"
 #import "STPSourceParams+Private.h"
 
+#import "NSBundle+Stripe_AppName.h"
 #import "STPCardParams.h"
 #import "STPFormEncoder.h"
 #import "STPSource+Private.h"
+
+@interface STPSourceParams ()
+
+// See STPSourceParams+Private.h
+
+@end
 
 @implementation STPSourceParams
 
@@ -33,7 +40,6 @@
 }
 
 - (void)setType:(STPSourceType)type {
-
     // If setting unknown and we're already unknown, don't want to override raw value
     if (type != self.type) {
         self.rawTypeString = [STPSource stringFromType:type];
@@ -47,6 +53,33 @@
 - (NSString *)usageString {
     return [STPSource stringFromUsage:self.usage];
 }
+
+#pragma mark - Description
+
+- (NSString *)description {
+    NSArray *props = @[
+                       // Object
+                       [NSString stringWithFormat:@"%@: %p", NSStringFromClass([self class]), self],
+
+                       // Basic source details
+                       [NSString stringWithFormat:@"type = %@", ([STPSource stringFromType:self.type]) ?: @"unknown"],
+                       [NSString stringWithFormat:@"rawTypeString = %@", self.rawTypeString],
+
+                       // Additional source details (alphabetical)
+                       [NSString stringWithFormat:@"amount = %@", self.amount],
+                       [NSString stringWithFormat:@"currency = %@", self.currency],
+                       [NSString stringWithFormat:@"flow = %@", ([STPSource stringFromFlow:self.flow]) ?: @"unknown"],
+                       [NSString stringWithFormat:@"metadata = %@", (self.metadata) ? @"<redacted>" : nil],
+                       [NSString stringWithFormat:@"owner = %@", (self.owner) ? @"<redacted>" : nil],
+                       [NSString stringWithFormat:@"redirect = %@", self.redirect],
+                       [NSString stringWithFormat:@"token = %@", self.token],
+                       [NSString stringWithFormat:@"usage = %@", ([STPSource stringFromUsage:self.usage]) ?: @"unknown"],
+                       ];
+
+    return [NSString stringWithFormat:@"<%@>", [props componentsJoinedByString:@"; "]];
+}
+
+#pragma mark - Constructors
 
 + (STPSourceParams *)bancontactParamsWithAmount:(NSUInteger)amount
                                            name:(NSString *)name
@@ -65,17 +98,6 @@
                                                    }
                                            };
     }
-    return params;
-}
-
-+ (STPSourceParams *)bitcoinParamsWithAmount:(NSUInteger)amount
-                                    currency:(NSString *)currency
-                                       email:(NSString *)email {
-    STPSourceParams *params = [self new];
-    params.type = STPSourceTypeBitcoin;
-    params.amount = @(amount);
-    params.currency = currency;
-    params.owner = @{ @"email": email };
     return params;
 }
 
@@ -130,7 +152,7 @@
 }
 
 + (STPSourceParams *)idealParamsWithAmount:(NSUInteger)amount
-                                      name:(NSString *)name
+                                      name:(nullable NSString *)name
                                  returnURL:(NSString *)returnURL
                        statementDescriptor:(nullable NSString *)statementDescriptor
                                       bank:(nullable NSString *)bank {
@@ -138,12 +160,14 @@
     params.type = STPSourceTypeIDEAL;
     params.amount = @(amount);
     params.currency = @"eur"; // iDEAL must always use eur
-    params.owner = @{ @"name": name };
+    if (name.length > 0) {
+        params.owner = @{ @"name": name };
+    }
     params.redirect = @{ @"return_url": returnURL };
-    if (statementDescriptor != nil || bank != nil) {
+    if (statementDescriptor.length > 0 || bank.length > 0) {
         NSMutableDictionary *idealDict = [NSMutableDictionary dictionary];
-        idealDict[@"statement_descriptor"] = statementDescriptor;
-        idealDict[@"bank"] = bank;
+        idealDict[@"statement_descriptor"] = (statementDescriptor.length > 0) ? statementDescriptor : nil;
+        idealDict[@"bank"] = (bank.length > 0) ? bank : nil;
         params.additionalAPIParameters = @{ @"ideal": idealDict };
     }
     return params;
@@ -164,7 +188,7 @@
 
     NSMutableDictionary<NSString *,NSString *> *address = [NSMutableDictionary new];
     address[@"city"] = city;
-    address[@"postal_code"] = postalCode,
+    address[@"postal_code"] = postalCode;
     address[@"country"] = country;
     address[@"line1"] = addressLine1;
 
@@ -203,6 +227,7 @@
                                          currency:(NSString *)currency
                                         returnURL:(NSString *)returnURL
                                              card:(NSString *)card {
+    NSCAssert(card != nil, @"'card' id is required to create a 3DS params for the card");
     STPSourceParams *params = [self new];
     params.type = STPSourceTypeThreeDSecure;
     params.amount = @(amount);
@@ -216,8 +241,111 @@
     return params;
 }
 
-#pragma mark - Redirect url
++ (STPSourceParams *)alipayParamsWithAmount:(NSUInteger)amount
+                                   currency:(NSString *)currency
+                                  returnURL:(NSString *)returnURL {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeAlipay;
+    params.amount = @(amount);
+    params.currency = currency;
+    params.redirect = @{ @"return_url": returnURL };
 
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    NSString *versionKey = [NSBundle stp_applicationVersion];
+    if (bundleID && versionKey) {
+        params.additionalAPIParameters = @{
+                                           @"alipay": @{
+                                                   @"app_bundle_id": bundleID,
+                                                   @"app_version_key": versionKey,
+                                                   },
+                                           };
+    }
+    return params;
+}
+
++ (STPSourceParams *)alipayReusableParamsWithCurrency:(NSString *)currency
+                                            returnURL:(NSString *)returnURL {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeAlipay;
+    params.currency = currency;
+    params.redirect = @{ @"return_url": returnURL };
+    params.usage = STPSourceUsageReusable;
+
+    return params;
+}
+
++ (STPSourceParams *)p24ParamsWithAmount:(NSUInteger)amount
+                                currency:(NSString *)currency
+                                   email:(NSString *)email
+                                    name:(nullable NSString *)name
+                               returnURL:(NSString *)returnURL {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeP24;
+    params.amount = @(amount);
+    params.currency = currency;
+
+    NSMutableDictionary *ownerDict = @{ @"email" : email }.mutableCopy;
+    if (name) {
+        ownerDict[@"name"] = name;
+    }
+    params.owner = ownerDict.copy;
+    params.redirect = @{ @"return_url": returnURL };
+    return params;
+}
+
++ (STPSourceParams *)visaCheckoutParamsWithCallId:(NSString *)callId {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeCard;
+    params.additionalAPIParameters = @{ @"card": @{ @"visa_checkout": @{ @"callid": callId } } };
+    return params;
+}
+
++ (STPSourceParams *)masterpassParamsWithCartId:(NSString *)cartId
+                                  transactionId:(NSString *)transactionId {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeCard;
+    params.additionalAPIParameters = @{ @"card": @{
+                                                @"masterpass": @{
+                                                        @"cart_id": cartId,
+                                                        @"transaction_id": transactionId,
+                                                        }
+                                                }
+
+                                        };
+    return params;
+}
+
++ (STPSourceParams *)epsParamsWithAmount:(NSUInteger)amount
+                                    name:(NSString *)name
+                               returnURL:(NSString *)returnURL
+                     statementDescriptor:(nullable NSString *)statementDescriptor {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeEPS;
+    params.amount = @(amount);
+    params.currency = @"eur"; // EPS must always use eur
+    params.owner = @{ @"name": name };
+    params.redirect = @{ @"return_url": returnURL };
+
+    if (statementDescriptor.length > 0) {
+        params.additionalAPIParameters = @{ @"statement_descriptor": statementDescriptor };
+    }
+
+    return params;
+}
+
++ (STPSourceParams *)multibancoParamsWithAmount:(NSUInteger)amount
+                                      returnURL:(NSString *)returnURL
+                                          email:(NSString *)email {
+    STPSourceParams *params = [self new];
+    params.type = STPSourceTypeMultibanco;
+    params.currency = @"eur"; // Multibanco must always use eur
+    params.amount = @(amount);
+    params.redirect = @{ @"return_url": returnURL };
+    params.owner = @{ @"email": email };
+    return params;
+}
+
+#pragma mark - Redirect Dictionary
 
 /**
  Private setter allows for setting the name of the app in the returnURL so
@@ -266,7 +394,6 @@
     return self.redirect;
 
 }
-
 
 #pragma mark - STPFormEncodable
 

@@ -11,10 +11,11 @@
 #import "NSDecimalNumber+Stripe_Currency.h"
 #import "STPAPIClient.h"
 #import "STPFixtures.h"
+#import "STPMocks.h"
 #import "STPPaymentContext.h"
 
 @interface STPPaymentContext (Testing)
-@property(nonatomic) PKShippingMethod *selectedShippingMethod;
+@property (nonatomic) PKShippingMethod *selectedShippingMethod;
 - (PKPaymentRequest *)buildPaymentRequest;
 @end
 
@@ -32,10 +33,10 @@
     STPPaymentConfiguration *config = [STPFixtures paymentConfiguration];
     config.appleMerchantIdentifier = @"fake_merchant_id";
     STPTheme *theme = [STPTheme defaultTheme];
-    id<STPBackendAPIAdapter> mockAPIAdapter = [STPFixtures staticAPIAdapter];
-    STPPaymentContext *paymentContext = [[STPPaymentContext alloc] initWithAPIAdapter:mockAPIAdapter
-                                                                        configuration:config
-                                                                                theme:theme];
+    STPCustomerContext *customerContext = [STPMocks staticCustomerContext];
+    STPPaymentContext *paymentContext = [[STPPaymentContext alloc] initWithCustomerContext:customerContext
+                                                                             configuration:config
+                                                                                     theme:theme];
     return paymentContext;
 }
 

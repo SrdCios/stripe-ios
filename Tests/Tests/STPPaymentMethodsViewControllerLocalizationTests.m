@@ -9,18 +9,19 @@
 #import <FBSnapshotTestCase/FBSnapshotTestCase.h>
 #import <Stripe/Stripe.h>
 
+#import "FBSnapshotTestCase+STPViewControllerLoading.h"
 #import "STPFixtures.h"
+#import "STPMocks.h"
 #import "STPLocalizationUtils+STPTestAdditions.h"
 
 @interface STPPaymentMethodsViewControllerLocalizationTests : FBSnapshotTestCase
-
 @end
 
 @implementation STPPaymentMethodsViewControllerLocalizationTests
 
 //- (void)setUp {
 //    [super setUp];
-//    
+//
 //    self.recordMode = YES;
 //}
 
@@ -29,30 +30,20 @@
     config.companyName = @"Test Company";
     config.requiredBillingAddressFields = STPBillingAddressFieldsFull;
     config.additionalPaymentMethods = STPPaymentMethodTypeAll;
-    config.smsAutofillDisabled = NO;
     STPTheme *theme = [STPTheme defaultTheme];
-    id apiAdapter = [STPFixtures staticAPIAdapter];
+    id customerContext = [STPMocks staticCustomerContextWithCustomer:[STPFixtures customerWithCardTokenAndSourceSources]];
     id delegate = OCMProtocolMock(@protocol(STPPaymentMethodsViewControllerDelegate));
     [STPLocalizationUtils overrideLanguageTo:language];
     STPPaymentMethodsViewController *paymentMethodsVC = [[STPPaymentMethodsViewController alloc] initWithConfiguration:config
                                                                                                                  theme:theme
-                                                                                                            apiAdapter:apiAdapter
+                                                                                                       customerContext:customerContext
                                                                                                               delegate:delegate];
 
-    UIViewController *rootVC = [UIViewController new];
 
-    UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:paymentMethodsVC];
+    UIView *viewToTest = [self stp_preparedAndSizedViewForSnapshotTestFromViewController:paymentMethodsVC];
 
-    UIWindow *testWindow = [[UIWindow alloc] initWithFrame:CGRectMake(0, 0, 320, 480)];
-
-    testWindow.rootViewController = rootVC;
-    [rootVC presentViewController:navController animated:NO completion:^{
-
-        FBSnapshotVerifyView(testWindow, nil)
-
-        [STPLocalizationUtils overrideLanguageTo:nil];
-    }];
-
+    FBSnapshotVerifyView(viewToTest, nil);
+    [STPLocalizationUtils overrideLanguageTo:nil];
 }
 
 - (void)testGerman {
